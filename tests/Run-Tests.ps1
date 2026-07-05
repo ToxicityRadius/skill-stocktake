@@ -403,12 +403,12 @@ It 'runs scan, diff, state-path, and save entry points' {
         $generatedRunPath = Join-Path $tempRoot 'generated-run.json'
         $generatedRaw = powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $scriptRoot 'New-AuditRun.ps1') -WorklistPath $workPath -OutputPath $generatedRunPath
         $generated = $generatedRaw | ConvertFrom-Json
-        Assert-Equal 3 $generated.schema_version 'Run generator should emit schema version 3.'
+        Assert-Equal 4 $generated.schema_version 'Forwarding run generator should emit schema version 4.'
         Assert-Equal @($diff.diff.pending_ids).Count @($generated.active_run.pending_ids).Count 'Run generator should preserve the worklist.'
         $pathRaw = powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $scriptRoot 'Get-DefaultStatePath.ps1') -ProjectRoot $projectRoot -StateRoot $tempRoot
         Assert-True ([string]$pathRaw -match 'results\.json') 'State-path wrapper should return results.json.'
         $incoming = [pscustomobject][ordered]@{
-            schema_version = 3
+            schema_version = 4
             project_root = $diff.inventory.project_root
             last_completed = $null
             active_run = [pscustomobject][ordered]@{

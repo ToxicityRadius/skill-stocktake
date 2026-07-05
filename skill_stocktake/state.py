@@ -33,6 +33,41 @@ def validate_state(state: dict) -> None:
         raise ValueError("state requires project_root")
 
 
+def merge_state(existing: dict | None, incoming: dict) -> dict:
+    validate_state(incoming)
+    if existing:
+        validate_state(existing)
+        if Path(existing["project_root"]).resolve() != Path(incoming["project_root"]).resolve():
+            raise ValueError("cannot merge state from a different project root")
+        old_active, new_active = existing.get("active_run"), incoming.get("active_run")
+        if old_active and new_active and old_active.get("run_id") != new_active.get("run_id"):
+            raise ValueError("incoming run_id does not match the active run")
+    output = dict(incoming)
+    active = output.get("active_run")
+    if active and active.get("status") == "completed":
+        records = dict(active.get("skills", {}))
+        previous = (existing or incoming).get("last_completed") or {}
+        if active.get("mode") in {"quick", "resume"}:
+            carried = dict(previous.get("skills", {}))
+            carried.update(records)
+            for logical_id in active.get("removed_ids", []):
+                carried.pop(logical_id, None)
+            records = carried
+        output["last_completed"] = {
+            "run_id": active.get("run_id"),
+            "completed_at": datetime.now(timezone.utc).isoformat(),
+            "inventory_sha256": active.get("inventory_sha256"),
+            "context_sha256": active.get("context_sha256"),
+            "diagnostics": active.get("diagnostics", []),
+            "skills": records,
+        }
+        output["active_run"] = None
+    elif existing and output.get("last_completed") is None:
+        output["last_completed"] = existing.get("last_completed")
+    output["updated_at"] = datetime.now(timezone.utc).isoformat()
+    return output
+
+
 def save_state(path: Path, state: dict, *, lock_timeout: float = 30) -> None:
     validate_state(state)
     path = Path(path)
