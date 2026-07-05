@@ -6,3 +6,5 @@ results.json
 .DS_Store
 Thumbs.db
 .worktrees/
+__pycache__/
+*.py[cod]
