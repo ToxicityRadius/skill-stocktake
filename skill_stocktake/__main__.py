@@ -1,9 +1,4 @@
-from .cli import build_parser
-
-
-def main() -> int:
-    build_parser().parse_args()
-    return 0
+from .cli import main
 
 
 if __name__ == "__main__":

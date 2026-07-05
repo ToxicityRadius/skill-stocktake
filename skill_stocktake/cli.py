@@ -1,4 +1,14 @@
 import argparse
+import json
+import shutil
+import sys
+from pathlib import Path
+
+from .artifacts import write_artifact
+from .discovery import discover_skills
+from .migration import migrate_v3
+from .redaction import PathRedactor
+from .security import scan_skill_security
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -11,6 +21,75 @@ def build_parser() -> argparse.ArgumentParser:
         item.add_argument("--allow-symlink-root", action="append", default=[])
         item.add_argument("--artifact-dir", default=".skill-stocktake")
         item.add_argument("--force", action="store_true")
-    for command in ("new-run", "save", "report", "migrate", "doctor"):
+    for command in ("new-run", "save"):
         subcommands.add_parser(command)
+    report = subcommands.add_parser("report")
+    report.add_argument("--state", required=True)
+    report.add_argument("--project-root", default=".")
+    report.add_argument("--output")
+    report.add_argument("--force", action="store_true")
+    migrate = subcommands.add_parser("migrate")
+    migrate.add_argument("--state", required=True)
+    subcommands.add_parser("doctor")
     return parser
+
+
+def _scan(args) -> dict:
+    project = Path(args.project_root).resolve()
+    home = Path.home()
+    roots = [project / ".agents" / "skills", project / ".codex" / "skills", home / ".agents" / "skills", home / ".codex" / "skills"]
+    inventory = discover_skills(roots, allow_symlink_roots=args.allow_symlink_root)
+    for skill in inventory["skills"]:
+        skill["security"] = scan_skill_security(Path(skill["path"]).parent)
+    inventory["project_root"] = str(project)
+    inventory["privacy"]["usage_scanned"] = bool(args.include_usage)
+    artifact_dir = Path(args.artifact_dir)
+    if not artifact_dir.is_absolute():
+        artifact_dir = project / artifact_dir
+    payload = json.dumps(inventory, indent=2)
+    write_artifact(artifact_dir / "work.json", payload, force=args.force)
+    return inventory
+
+
+def _migrate(path: Path) -> dict:
+    old = json.loads(path.read_text(encoding="utf-8"))
+    migrated = migrate_v3(old)
+    backup = Path(str(path) + ".v3.bak")
+    if backup.exists():
+        raise FileExistsError(f"migration backup already exists: {backup}")
+    shutil.copy2(path, backup)
+    write_artifact(path, json.dumps(migrated, indent=2), force=True)
+    return migrated
+
+
+def _report(args) -> str:
+    state = json.loads(Path(args.state).read_text(encoding="utf-8"))
+    project = str(Path(args.project_root).resolve())
+    redactor = PathRedactor(home=str(Path.home()), project=project, codex_home=str(Path.home() / ".codex"), plugin_cache=str(Path.home() / ".codex" / "plugins" / "cache"))
+    lines = ["# Skill Stocktake Report", "", f"Project: {redactor.redact(state.get('project_root', project))}", "", f"Schema: {state.get('schema_version')}"]
+    report = "\n".join(lines) + "\n"
+    if args.output:
+        write_artifact(Path(args.output), report, force=args.force)
+    return report
+
+
+def main(argv=None) -> int:
+    args = build_parser().parse_args(argv)
+    try:
+        if args.command in ("scan", "diff"):
+            print(json.dumps(_scan(args), indent=2))
+        elif args.command == "migrate":
+            print(json.dumps(_migrate(Path(args.state)), indent=2))
+        elif args.command == "report":
+            print(_report(args), end="")
+        elif args.command == "doctor":
+            print(json.dumps({"status": "ok", "schema_version": 4}))
+        else:
+            raise ValueError(f"{args.command} is not implemented yet")
+        return 0
+    except FileExistsError as error:
+        print(str(error), file=sys.stderr)
+        return 5
+    except (OSError, ValueError, json.JSONDecodeError) as error:
+        print(str(error), file=sys.stderr)
+        return 3
