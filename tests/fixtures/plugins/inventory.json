@@ -1,0 +1,11 @@
+{
+  "installed": [
+    {
+      "pluginId": "demo@openai-curated",
+      "installed": true,
+      "enabled": true,
+      "version": "latest"
+    }
+  ],
+  "available": []
+}

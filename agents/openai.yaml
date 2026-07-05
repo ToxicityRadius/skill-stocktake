@@ -1,0 +1,4 @@
+interface:
+  display_name: "Skill Stocktake"
+  short_description: "Audit Codex skills with evidence and safe caching"
+  default_prompt: "Use $skill-stocktake to audit my active user, project, and managed Codex skills."

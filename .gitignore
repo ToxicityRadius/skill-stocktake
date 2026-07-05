@@ -1,0 +1,7 @@
+skill-stocktake-work.json
+skill-stocktake-run.json
+results.json
+*.tmp
+*.lock
+.DS_Store
+Thumbs.db

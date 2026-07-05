@@ -1,0 +1,4 @@
+interface:
+  display_name: "Container Skill"
+  short_description: "Too short"
+  default_prompt: "Audit this fixture."
