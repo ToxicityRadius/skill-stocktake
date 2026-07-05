@@ -97,7 +97,7 @@ def discover_managed_roots(cache_root, *, config_path=None, plugin_inventory_pat
 def discover_skills(roots, *, allow_symlink_roots=None) -> dict:
     allow_symlink_roots = allow_symlink_roots or []
     allowed = [Path(item).resolve() for item in allow_symlink_roots]
-    skills, diagnostics = [], []
+    instances, diagnostics = [], []
     for root_spec in roots:
         raw_root = root_spec.get("path") if isinstance(root_spec, dict) else root_spec
         metadata = root_spec if isinstance(root_spec, dict) else {}
@@ -117,15 +117,64 @@ def discover_skills(roots, *, allow_symlink_roots=None) -> dict:
             text = skill_file.read_text(encoding="utf-8-sig", errors="replace")
             match = re.search(r"(?m)^name:\s*[\"']?([^\"'\r\n]+)", text)
             name = match.group(1).strip() if match else candidate.name
-            logical_id = "s-" + hashlib.sha256(f"user:{name}".encode()).hexdigest()[:20]
             bundle = _bundle_hash(resolved)
-            skills.append({"logical_id": logical_id, "logical_name": name, "path": str(skill_file), "locations": [str(skill_file)], "bundle_sha256": bundle, "source": metadata.get("source", "user"), "ownership": metadata.get("ownership", "user"), "security": {"status": "not_scanned", "risk_level": "unknown", "findings": []}})
+            instances.append({
+                "logical_name": name,
+                "path": str(skill_file),
+                "skill_directory": str(resolved),
+                "relative_path": f"{candidate.name}/SKILL.md",
+                "bundle_sha256": bundle,
+                "source": metadata.get("source", "user"),
+                "ownership": metadata.get("ownership", "user"),
+                "selection": metadata.get("selection", "configured"),
+            })
     grouped = {}
-    for skill in skills:
-        key = (skill["logical_name"].lower(), skill["bundle_sha256"])
-        if key in grouped:
-            grouped[key]["locations"].extend(skill["locations"])
+    for instance in instances:
+        source = instance["source"]
+        if source.startswith("global-"):
+            scope = "global"
+        elif re.match(r"^project-(?:codex|agents):", source):
+            scope = source.split(":", 1)[0]
         else:
-            grouped[key] = skill
-    skills = list(grouped.values())
+            scope = source
+        compatibility = source in {"global-codex", "global-agents"} or bool(re.match(r"^project-(?:codex|agents):", source))
+        key = (scope, instance["relative_path"].lower(), instance["bundle_sha256"]) if compatibility else (source, instance["relative_path"].lower())
+        grouped.setdefault(key, []).append(instance)
+    skills = []
+    for items in grouped.values():
+        primary = items[0]
+        source = primary["source"]
+        if source.startswith("global-"):
+            scope = "global"
+        elif re.match(r"^project-(?:codex|agents):", source):
+            scope = source.split(":", 1)[0]
+        else:
+            scope = source
+        if len(items) > 1:
+            seed = f"mirror|{scope}|{primary['relative_path']}|{primary['logical_name']}".lower()
+        else:
+            seed = f"instance|{source}|{primary['relative_path']}|{primary['logical_name']}".lower()
+        skills.append({
+            "logical_id": "s-" + hashlib.sha256(seed.encode()).hexdigest()[:20],
+            "logical_name": primary["logical_name"],
+            "path": primary["path"],
+            "skill_directory": primary["skill_directory"],
+            "locations": sorted({item["path"] for item in items}),
+            "sources": sorted({item["source"] for item in items}),
+            "bundle_sha256": primary["bundle_sha256"],
+            "source": source,
+            "ownership": "managed-read-only" if any(item["ownership"] == "managed-read-only" for item in items) else primary["ownership"],
+            "selection": primary["selection"],
+            "security": {"status": "not_scanned", "risk_level": "unknown", "findings": []},
+        })
+    for name in sorted({item["logical_name"] for item in skills}):
+        matches = [item for item in skills if item["logical_name"] == name]
+        if len({item["bundle_sha256"] for item in matches}) > 1:
+            diagnostics.append({
+                "code": "name_collision",
+                "severity": "warning",
+                "path": "; ".join(item["path"] for item in matches),
+                "message": f"Skill name '{name}' resolves to different bundles.",
+            })
+    skills.sort(key=lambda item: item["logical_id"])
     return {"schema_version": 4, "skills": skills, "diagnostics": diagnostics, "privacy": {"usage_scanned": False, "report_redaction": True}}

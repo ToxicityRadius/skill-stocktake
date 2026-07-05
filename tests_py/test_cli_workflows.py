@@ -21,7 +21,7 @@ class CliWorkflows(unittest.TestCase):
             self.assertEqual(result.returncode, 0, result.stderr)
             inventory = json.loads(result.stdout)
             self.assertFalse(inventory["privacy"]["usage_scanned"])
-            self.assertEqual(inventory["skills"][0]["logical_name"], "demo")
+            self.assertIn("demo", [item["logical_name"] for item in inventory["skills"]])
             self.assertTrue((root / ".skill-stocktake" / "work.json").is_file())
 
     def test_scan_refuses_existing_artifact_without_force(self):
@@ -65,6 +65,41 @@ class CliWorkflows(unittest.TestCase):
             managed = next(item for item in inventory["skills"] if item["logical_name"] == "managed")
             self.assertEqual(managed["ownership"], "managed-read-only")
             self.assertEqual(managed["usage"]["unique_sessions_30d"], 1)
+
+    def test_scan_uses_default_config_to_exclude_disabled_plugin(self):
+        with tempfile.TemporaryDirectory() as temp:
+            base = Path(temp); project = base / "project"; home = base / "home"
+            project.mkdir()
+            skill = home / ".codex" / "plugins" / "cache" / "openai-curated" / "demo" / "latest" / "skills" / "managed"
+            skill.mkdir(parents=True)
+            (skill / "SKILL.md").write_text("---\nname: managed\ndescription: managed\n---\n", encoding="utf-8")
+            config = home / ".codex" / "config.toml"
+            config.write_text('[plugins."demo@openai-curated"]\nenabled = false\n', encoding="utf-8")
+            result = self.run_cli("scan", "--project-root", str(project), "--home-root", str(home), cwd=Path(__file__).parents[1])
+            self.assertEqual(result.returncode, 0, result.stderr)
+            inventory = json.loads(result.stdout)
+            self.assertNotIn("managed", [item["logical_name"] for item in inventory["skills"]])
+
+    def test_scan_honors_current_working_directory_for_nested_project_skills(self):
+        with tempfile.TemporaryDirectory() as temp:
+            project = Path(temp); nested = project / "packages" / "app"
+            skill = nested / ".agents" / "skills" / "nested"
+            skill.mkdir(parents=True)
+            (skill / "SKILL.md").write_text("---\nname: nested\ndescription: nested\n---\n", encoding="utf-8")
+            result = self.run_cli("scan", "--project-root", str(project), "--current-working-directory", str(nested), "--skip-managed", cwd=Path(__file__).parents[1])
+            self.assertEqual(result.returncode, 0, result.stderr)
+            inventory = json.loads(result.stdout)
+            self.assertIn("nested", [item["logical_name"] for item in inventory["skills"]])
+
+    def test_report_accepts_worklist_inventory_shape(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            state = root / "state.json"; work = root / "work.json"
+            state.write_text(json.dumps({"schema_version": 4, "project_root": str(root), "last_completed": {"skills": {"s-1": {"logical_id": "s-1", "logical_name": "demo", "verdict": "Keep", "confidence": "high", "reason": "Useful."}}}, "active_run": None}), encoding="utf-8")
+            work.write_text(json.dumps({"inventory": {"skills": [{"logical_id": "s-1", "logical_name": "demo", "source": "project-agents", "ownership": "project", "usage": {"unique_sessions_7d": 0}, "security": {"risk_level": "none"}}], "diagnostics": [], "privacy": {"usage_scanned": False}}}), encoding="utf-8")
+            result = self.run_cli("report", "--state", str(state), "--inventory", str(work), cwd=Path(__file__).parents[1])
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn("| demo | project-agents | project |", result.stdout)
 
 
 if __name__ == "__main__":

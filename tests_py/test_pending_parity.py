@@ -1,4 +1,5 @@
 import json
+import hashlib
 import tempfile
 import unittest
 from datetime import datetime, timezone
@@ -11,6 +12,42 @@ from skill_stocktake.usage import aggregate_usage
 
 
 class PendingParity(unittest.TestCase):
+    def test_single_instance_logical_id_matches_v3_seed(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp) / "skills"; skill = root / "demo"
+            skill.mkdir(parents=True)
+            (skill / "SKILL.md").write_text("---\nname: demo\ndescription: demo\n---\n", encoding="utf-8")
+            inventory = discover_skills([{"path": root, "source": "project-agents:1", "ownership": "project"}])
+            expected = "s-" + hashlib.sha256(b"instance|project-agents:1|demo/skill.md|demo").hexdigest()[:20]
+            self.assertEqual(inventory["skills"][0]["logical_id"], expected)
+
+    def test_global_compatibility_mirrors_use_v3_mirror_seed(self):
+        with tempfile.TemporaryDirectory() as temp:
+            base = Path(temp); roots = []
+            for source in ("global-codex", "global-agents"):
+                root = base / source; skill = root / "demo"
+                skill.mkdir(parents=True)
+                (skill / "SKILL.md").write_text("---\nname: demo\ndescription: demo\n---\n", encoding="utf-8")
+                roots.append({"path": root, "source": source, "ownership": "user"})
+            inventory = discover_skills(roots)
+            expected = "s-" + hashlib.sha256(b"mirror|global|demo/skill.md|demo").hexdigest()[:20]
+            self.assertEqual(len(inventory["skills"]), 1)
+            self.assertEqual(inventory["skills"][0]["logical_id"], expected)
+            self.assertEqual(len(inventory["skills"][0]["locations"]), 2)
+
+    def test_same_name_different_bundles_remain_distinct_and_emit_collision(self):
+        with tempfile.TemporaryDirectory() as temp:
+            base = Path(temp); roots = []
+            for index, body in enumerate(("one", "two"), 1):
+                root = base / str(index); skill = root / "demo"
+                skill.mkdir(parents=True)
+                (skill / "SKILL.md").write_text(f"---\nname: demo\ndescription: demo\n---\n{body}\n", encoding="utf-8")
+                roots.append({"path": root, "source": f"additional:{index}", "ownership": "user"})
+            inventory = discover_skills(roots)
+            self.assertEqual(len(inventory["skills"]), 2)
+            self.assertEqual(len({item["logical_id"] for item in inventory["skills"]}), 2)
+            self.assertIn("name_collision", {item["code"] for item in inventory["diagnostics"]})
+
     def test_python_310_compatibility_does_not_import_tomllib(self):
         source = (Path(__file__).parents[1] / "skill_stocktake" / "discovery.py").read_text(encoding="utf-8")
         self.assertNotIn("import tomllib", source)

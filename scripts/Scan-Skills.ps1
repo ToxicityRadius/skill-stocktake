@@ -17,7 +17,7 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 $python = (Get-Command python -ErrorAction Stop).Source
-$argsList = @('-m', 'skill_stocktake', 'scan', '--project-root', $ProjectRoot, '--home-root', $HomeRoot, '--no-artifact')
+$argsList = @('-m', 'skill_stocktake', 'scan', '--project-root', $ProjectRoot, '--current-working-directory', $CurrentWorkingDirectory, '--home-root', $HomeRoot, '--no-artifact')
 if ($ConfigPath) { $argsList += @('--config', $ConfigPath) }
 if ($PluginInventoryPath) { $argsList += @('--plugin-inventory', $PluginInventoryPath) }
 if ($PluginCacheRoot) { $argsList += @('--plugin-cache-root', $PluginCacheRoot) }
