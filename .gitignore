@@ -5,3 +5,6 @@ results.json
 *.lock
 .DS_Store
 Thumbs.db
+.worktrees/
+__pycache__/
+*.py[cod]

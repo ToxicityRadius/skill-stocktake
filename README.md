@@ -1,6 +1,6 @@
 # Skill Stocktake for Codex
 
-Audit an entire Codex skill setup without changing it. Skill Stocktake inventories user, project, system, and active managed/plugin skills; evaluates their quality; tracks changes; and produces a resumable, evidence-backed report.
+Audit an entire Codex skill setup without changing it. Skill Stocktake v4 inventories user, project, system, and active managed/plugin skills; evaluates quality and static security risk; tracks changes; and produces a resumable, evidence-backed report on Windows, macOS, and Linux.
 
 ## Highlights
 
@@ -9,17 +9,20 @@ Audit an entire Codex skill setup without changing it. Skill Stocktake inventori
 - Fingerprints complete skill bundles and applicable instruction/config context.
 - Supports full, quick, and resumable audits with schema-validated state.
 - Records confidence, evidence, reviewed resources, dependencies, freshness, and proposals.
-- Optionally aggregates recent usage without retaining session content or command arguments.
+- Reads session history only with explicit `--include-usage` consent and never retains session content or command arguments.
+- Excludes symlinks outside discovered roots unless explicitly allowed.
+- Redacts local roots in shareable reports and refuses accidental artifact replacement.
 - Locks and atomically saves state so interrupted audits can recover safely.
 - Treats managed, system, and admin skills as read-only.
 
 ## Requirements
 
 - Codex CLI or Codex app
-- Windows PowerShell 5.1 or PowerShell 7+
+- Python 3.10+
+- PowerShell is optional and required only for deprecated v3-compatible wrappers on Windows.
 - Python only for Codex's optional official skill validator
 
-This implementation is Windows-first because its deterministic helpers are PowerShell scripts.
+The v4 engine uses only the Python standard library. No package download is required after installing the skill.
 
 ## Install
 
@@ -49,14 +52,26 @@ Invoke the skill explicitly:
 $skill-stocktake audit my current setup
 ```
 
-The workflow creates a worklist and resumable run file in the current directory, evaluates skills using [`references/evaluation-rubric.md`](references/evaluation-rubric.md), validates the completed state, and formats a report. It never applies merge, retirement, rewrite, or deletion proposals without explicit approval.
+The workflow creates scoped artifacts under `.skill-stocktake/`, evaluates skills using [`references/evaluation-rubric.md`](references/evaluation-rubric.md), validates state, and formats a redacted report. It never applies merge, retirement, rewrite, or deletion proposals without explicit approval.
 
-Session-history aggregation is enabled by the documented default workflow. Use `-UsageMode None` with `Get-SkillDiff.ps1` when session analysis is unnecessary or not approved.
+Session-history aggregation is disabled by default. Supply `--include-usage` only after the user approves reading recent local Codex sessions.
+
+Direct CLI examples:
+
+```bash
+python -m skill_stocktake scan --project-root .
+python -m skill_stocktake scan --project-root . --include-usage --force
+python -m skill_stocktake doctor
+```
 
 ## Run tests
 
 ```powershell
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tests\Run-Tests.ps1
+```
+
+```bash
+python -m unittest discover -s tests_py -p "test_*.py" -v
 ```
 
 The suite covers discovery, plugin selection, mirrors, collisions, metadata parsing, bundle/context changes, usage privacy, reverse references, state validation, resumability, locking, and atomic persistence.
@@ -67,6 +82,8 @@ The suite covers discovery, plugin selection, mirrors, collisions, metadata pars
 - Managed/plugin, system, and admin skills remain read-only.
 - Usage results contain aggregate counts only—not prompts, session text, command arguments, secrets, or credentials.
 - Merge and retirement proposals require dependency and replacement evidence.
+- Static security findings are advisory; a lifecycle verdict of `Keep` is not malware certification.
+- Audited code is read as bounded text and is never executed or imported.
 
 ## Contributing
 
