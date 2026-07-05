@@ -5,3 +5,4 @@ results.json
 *.lock
 .DS_Store
 Thumbs.db
+.worktrees/
