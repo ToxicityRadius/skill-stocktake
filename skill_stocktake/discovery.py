@@ -1,7 +1,6 @@
 import hashlib
 import json
 import re
-import tomllib
 from pathlib import Path
 
 
@@ -30,17 +29,37 @@ def _runtime_plugins(path):
     return {str(item.get("pluginId", "")).lower(): item for item in data.get("installed", []) if item.get("pluginId")}
 
 
+def _configured_plugins(path):
+    if not path or not Path(path).is_file():
+        return {}
+    configured = {}
+    current = None
+    try:
+        lines = Path(path).read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return {}
+    for line in lines:
+        stripped = line.strip()
+        section = re.fullmatch(r'\[plugins\."([^"]+)"\]', stripped)
+        if section:
+            current = section.group(1).lower()
+            configured.setdefault(current, {})
+            continue
+        if stripped.startswith("["):
+            current = None
+            continue
+        enabled = re.fullmatch(r"enabled\s*=\s*(true|false)\s*(?:#.*)?", stripped, re.IGNORECASE)
+        if current and enabled:
+            configured[current]["enabled"] = enabled.group(1).lower() == "true"
+    return configured
+
+
 def discover_managed_roots(cache_root, *, config_path=None, plugin_inventory_path=None):
     cache = Path(cache_root)
     if not cache.is_dir():
         return []
     runtime = _runtime_plugins(plugin_inventory_path)
-    configured = {}
-    if config_path and Path(config_path).is_file():
-        try:
-            configured = tomllib.loads(Path(config_path).read_text(encoding="utf-8")).get("plugins", {})
-        except (OSError, tomllib.TOMLDecodeError):
-            configured = {}
+    configured = _configured_plugins(config_path)
     groups = {}
     excluded = re.compile(r"(?i)^(?:plugin-backup.*|plugin-install.*|backup-.*|staging|node_modules|tests?|fixtures?)$")
     for skills in cache.rglob("skills"):

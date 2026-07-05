@@ -11,6 +11,10 @@ from skill_stocktake.usage import aggregate_usage
 
 
 class PendingParity(unittest.TestCase):
+    def test_python_310_compatibility_does_not_import_tomllib(self):
+        source = (Path(__file__).parents[1] / "skill_stocktake" / "discovery.py").read_text(encoding="utf-8")
+        self.assertNotIn("import tomllib", source)
+
     def test_powershell_entrypoints_forward_to_python(self):
         root = Path(__file__).parents[1] / "scripts"
         for name in ("Scan-Skills.ps1", "New-AuditRun.ps1", "Save-Results.ps1", "Format-Report.ps1"):
