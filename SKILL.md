@@ -9,7 +9,7 @@ Audit skills without changing them. Require explicit approval before rewriting, 
 
 ## Prepare
 
-Resolve the installation and project context. `ProjectRoot` is the repository root; `CurrentWorkingDirectory` determines nested skill and instruction scope.
+Resolve the installation and project context. `ProjectRoot` is the repository root; `CurrentWorkingDirectory` determines nested skill and instruction scope. Prefer the cross-platform Python v4 engine.
 
 ```powershell
 $CodexHome = if ($env:CODEX_HOME) { $env:CODEX_HOME } else { Join-Path $HOME '.codex' }
@@ -20,6 +20,8 @@ $CurrentWorkingDirectory = (Get-Location).Path
 $StatePath = powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $SkillRoot 'scripts\Get-DefaultStatePath.ps1') -ProjectRoot $ProjectRoot
 ```
 
+Confirm Python 3.10+ is available, then run `python -m skill_stocktake doctor` from the skill directory. The PowerShell entrypoints remain compatibility paths for v3-era automation.
+
 Always read `references/evaluation-rubric.md` before assigning verdicts or constructing records.
 
 ## Build the worklist
@@ -28,12 +30,12 @@ Always read `references/evaluation-rubric.md` before assigning verdicts or const
 $WorkPath = Join-Path (Get-Location) 'skill-stocktake-work.json'
 $RunPath = Join-Path (Get-Location) 'skill-stocktake-run.json'
 $WorkJson = powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $SkillRoot 'scripts\Get-SkillDiff.ps1') `
-  -StatePath $StatePath -ProjectRoot $ProjectRoot -CurrentWorkingDirectory $CurrentWorkingDirectory -UsageMode Sessions
+  -StatePath $StatePath -ProjectRoot $ProjectRoot -CurrentWorkingDirectory $CurrentWorkingDirectory -UsageMode None
 [System.IO.File]::WriteAllText($WorkPath, ($WorkJson -join [Environment]::NewLine))
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $SkillRoot 'scripts\New-AuditRun.ps1') -WorklistPath $WorkPath -OutputPath $RunPath | Out-Null
 ```
 
-Pass `-UsageMode None` when session-history analysis is unnecessary or not approved. Pass `-AdditionalSkillRoot` only for roots confirmed by the current runtime but unavailable through normal discovery.
+Session-history analysis requires explicit user approval. Use Python `--include-usage` or PowerShell `-UsageMode Sessions` only after approval. Pass additional or symlink roots only when confirmed by the current runtime and explicitly trusted.
 
 The inventory distinguishes confirmed, inferred, disabled, and excluded activation. Never call coverage complete when diagnostics report unreadable roots or inferred managed activation.
 

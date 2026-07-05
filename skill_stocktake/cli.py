@@ -9,6 +9,7 @@ from .discovery import discover_skills
 from .migration import migrate_v3
 from .redaction import PathRedactor
 from .security import scan_skill_security
+from .state import create_run, save_state
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -21,8 +22,15 @@ def build_parser() -> argparse.ArgumentParser:
         item.add_argument("--allow-symlink-root", action="append", default=[])
         item.add_argument("--artifact-dir", default=".skill-stocktake")
         item.add_argument("--force", action="store_true")
-    for command in ("new-run", "save"):
-        subcommands.add_parser(command)
+    new_run = subcommands.add_parser("new-run")
+    new_run.add_argument("--worklist", required=True)
+    new_run.add_argument("--output")
+    new_run.add_argument("--mode", choices=("full", "quick", "resume"), default="full")
+    new_run.add_argument("--force", action="store_true")
+    save = subcommands.add_parser("save")
+    save.add_argument("--state", required=True)
+    save.add_argument("--evaluation", required=True)
+    save.add_argument("--lock-timeout", type=float, default=30)
     report = subcommands.add_parser("report")
     report.add_argument("--state", required=True)
     report.add_argument("--project-root", default=".")
@@ -82,6 +90,17 @@ def main(argv=None) -> int:
             print(json.dumps(_migrate(Path(args.state)), indent=2))
         elif args.command == "report":
             print(_report(args), end="")
+        elif args.command == "new-run":
+            work = json.loads(Path(args.worklist).read_text(encoding="utf-8"))
+            run = create_run(work, mode=args.mode)
+            payload = json.dumps(run, indent=2)
+            if args.output:
+                write_artifact(Path(args.output), payload, force=args.force)
+            print(payload)
+        elif args.command == "save":
+            state = json.loads(Path(args.evaluation).read_text(encoding="utf-8"))
+            save_state(Path(args.state), state, lock_timeout=args.lock_timeout)
+            print(json.dumps(state, indent=2))
         elif args.command == "doctor":
             print(json.dumps({"status": "ok", "schema_version": 4}))
         else:

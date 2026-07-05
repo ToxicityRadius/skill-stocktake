@@ -8,10 +8,20 @@ permissions:
   contents: read
 
 jobs:
-  powershell:
-    runs-on: windows-latest
+  python:
+    strategy:
+      matrix:
+        os: [windows-latest, ubuntu-latest, macos-latest]
+        python-version: ["3.10", "3.x"]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
-      - name: Run regression suite
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Run Python contracts
+        run: python -m unittest discover -s tests_py -p "test_*.py" -v
+      - name: Run legacy PowerShell contracts
+        if: runner.os == 'Windows'
         shell: powershell
         run: powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tests\Run-Tests.ps1
