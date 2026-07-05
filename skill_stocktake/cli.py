@@ -20,6 +20,7 @@ def build_parser() -> argparse.ArgumentParser:
     for command in ("scan", "diff"):
         item = subcommands.add_parser(command)
         item.add_argument("--project-root", default=".")
+        item.add_argument("--current-working-directory")
         item.add_argument("--home-root")
         item.add_argument("--config")
         item.add_argument("--plugin-cache-root")
@@ -56,18 +57,32 @@ def build_parser() -> argparse.ArgumentParser:
 
 def _scan(args) -> dict:
     project = Path(args.project_root).resolve()
+    cwd = Path(args.current_working_directory).resolve() if args.current_working_directory else project
     home = Path(args.home_root).resolve() if args.home_root else Path.home()
     roots = [
-        {"path": project / ".agents" / "skills", "source": "project-agents", "ownership": "project"},
-        {"path": project / ".codex" / "skills", "source": "project-codex", "ownership": "project"},
         {"path": home / ".agents" / "skills", "source": "global-agents", "ownership": "user"},
         {"path": home / ".codex" / "skills", "source": "global-codex", "ownership": "user"},
         {"path": home / ".codex" / "skills" / ".system", "source": "system", "ownership": "system-read-only"},
     ]
+    try:
+        relative_cwd = cwd.relative_to(project)
+        directories = [project]
+        current = project
+        for part in relative_cwd.parts:
+            current = current / part
+            directories.append(current)
+    except ValueError:
+        directories = [project]
+    for index, directory in enumerate(directories, 1):
+        roots.extend((
+            {"path": directory / ".agents" / "skills", "source": f"project-agents:{index}", "ownership": "project"},
+            {"path": directory / ".codex" / "skills", "source": f"project-codex:{index}", "ownership": "project"},
+        ))
     roots.extend({"path": Path(item), "source": "additional", "ownership": "user"} for item in args.additional_skill_root)
     if not args.skip_managed:
         cache = Path(args.plugin_cache_root) if args.plugin_cache_root else home / ".codex" / "plugins" / "cache"
-        roots.extend(discover_managed_roots(cache, config_path=args.config, plugin_inventory_path=args.plugin_inventory))
+        config = Path(args.config) if args.config else home / ".codex" / "config.toml"
+        roots.extend(item for item in discover_managed_roots(cache, config_path=config, plugin_inventory_path=args.plugin_inventory) if item["enabled"])
     inventory = discover_skills(roots, allow_symlink_roots=args.allow_symlink_root)
     for skill in inventory["skills"]:
         skill["security"] = scan_skill_security(Path(skill["path"]).parent)
@@ -121,6 +136,7 @@ def _report(args) -> str:
     state = json.loads(Path(args.state).read_text(encoding="utf-8"))
     project = str(Path(args.project_root).resolve())
     inventory = json.loads(Path(args.inventory).read_text(encoding="utf-8")) if args.inventory else {"skills": [], "diagnostics": [], "privacy": state.get("privacy", {})}
+    inventory = inventory.get("inventory", inventory)
     report = format_report(state, inventory, project_root=project, home=Path.home(), codex_home=Path.home() / ".codex", plugin_cache=Path.home() / ".codex" / "plugins" / "cache")
     if args.output:
         write_artifact(Path(args.output), report, force=args.force)

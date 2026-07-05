@@ -3,6 +3,8 @@ import re
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
+from .paths import contained_file
+
 
 def _parse_time(value):
     if not value:
@@ -22,6 +24,8 @@ def aggregate_usage(sessions_root, skill_names, *, now=None):
     if not root.is_dir():
         return results
     for path in root.rglob("*.jsonl"):
+        if not contained_file(root, path):
+            continue
         session_id = path.as_posix()
         for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
             try:
